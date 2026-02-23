@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import styled from 'styled-components'
 import { GridContainer, GridColumn } from '../styles'
 
@@ -37,21 +36,8 @@ const ColumnIndicator = styled(GridColumn)`
 `
 
 const GridVisualization = () => {
-  const [isVisible, setIsVisible] = useState(false)
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      const isInput = e.target.closest('input, textarea, [contenteditable="true"]')
-      if ((e.key === 'g' || e.key === 'G') && !isInput) {
-        setIsVisible((prev) => !prev)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
   return (
-    <VisualizationWrapper $visible={isVisible}>
+    <VisualizationWrapper $visible={false}>
       <GridWrapper>
         <GridContainer>
           {Array.from({ length: 12 }, (_, i) => (

@@ -70,11 +70,24 @@ const ProjectImage = styled.img`
 
 const ProjectName = styled.h1`
   font-family: 'ABCGravity', sans-serif;
-  font-size: 7rem;
-  line-height: 0.9;
-  margin: 0 0 1.5rem 0;
-  /* text-align: center; */
+  font-size: 2.5rem;
+  line-height: 0.95;
+  margin: 0 0 1rem 0;
   text-transform: uppercase;
+
+  @media (min-width: 768px) {
+    font-size: 4.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  @media (min-width: 1024px) {
+    font-size: 6rem;
+    margin-bottom: 1.5rem;
+  }
+
+  @media (min-width: 1440px) {
+    font-size: 7rem;
+  }
 `
 
 const Description = styled.div`
