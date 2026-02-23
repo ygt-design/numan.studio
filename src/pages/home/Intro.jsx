@@ -19,6 +19,10 @@ const IntroWrapper = styled.div`
   justify-content: space-between;
   position: relative;
 
+  @media (max-width: 767px) {
+    padding-top: ${(props) => (props.$tagsMenuHeight ? `${props.$tagsMenuHeight + 8}px` : '20px')};
+  }
+
   @media (min-width: 768px) {
     height: 100vh;
   }
@@ -73,7 +77,7 @@ const ResponsiveBodyColumn = styled(GridColumn)`
   }
 `
 
-const Intro = () => {
+const Intro = ({ tagsMenuHeight = 0 }) => {
   const [aboutText, setAboutText] = useState('')
   const { setIsLoading } = useLoading()
   const loadingSource = 'intro'
@@ -155,7 +159,7 @@ const Intro = () => {
   }, [setIsLoading, loadingSource])
 
   return (
-    <IntroWrapper>
+    <IntroWrapper $tagsMenuHeight={tagsMenuHeight}>
       <BodyCopyContainer>
         <GridContainer>
           <ResponsiveBodyColumn start={7} end={13}>

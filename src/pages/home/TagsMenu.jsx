@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import styled from 'styled-components'
 import { getChannelContents, getGroupChannels } from '../../api/arenaClient.js'
 
@@ -15,6 +15,22 @@ const MenuWrapper = styled.div`
   padding: 20px 0 0 20px;
   max-height: 100vh;
   overflow-y: auto;
+  box-sizing: border-box;
+
+  @media (min-width: 768px) {
+    width: 120px;
+    max-width: 120px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  @media (max-width: 767px) {
+    padding: 12px 20px;
+    max-width: 100%;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+  }
 `
 
 const TagList = styled.ul`
@@ -25,37 +41,76 @@ const TagList = styled.ul`
   font-size: 0.9rem;
   line-height: 1.6;
   color: black;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  min-width: 0;
+
+  @media (min-width: 768px) {
+    width: 100%;
+  }
+
+  @media (max-width: 767px) {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    padding-bottom: 4px;
+
+    &::-webkit-scrollbar {
+      height: 4px;
+    }
+    scrollbar-width: thin;
+  }
 `
 
 const TagItem = styled.li`
   margin: 0;
   padding: 0;
+  flex-shrink: 0;
 
-
+  @media (min-width: 768px) {
+    flex-shrink: unset;
+  }
 `
 
 const TagButton = styled.button`
   font-family: 'PPNeueMontreal', sans-serif;
   font-size: 1rem;
   color: black;
-  background: none;
   border: none;
   cursor: pointer;
   text-align: left;
-  text-decoration: ${(props) => (props.$selected ? 'background-color: #ccc;' : 'none')};
+  text-decoration: none;
   font-weight: ${(props) => (props.$selected ? '600' : 'inherit')};
-
-
   border: 0.5px solid #ccc;
   padding: 0.35rem;
   width: fit-content;
-  margin-bottom: 0.5rem;
-  background-color: white;
-
+  max-width: 100%;
+  margin-bottom: 0;
+  background-color: ${(props) => (props.$selected ? '#ccc' : 'white')};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 
   &:hover {
     background-color: #ccc;
     color: white;
+  }
+
+  @media (min-width: 768px) {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  @media (max-width: 767px) {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+    flex-shrink: 0;
   }
 `
 
@@ -72,8 +127,22 @@ const ClearButton = styled.button`
   border: 0.5px solid #ccc;
   padding: 0.35rem;
   width: fit-content;
-  margin-bottom: 0.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
   background-color: white;
+  flex-shrink: 0;
+
+  @media (min-width: 768px) {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  @media (max-width: 767px) {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+    margin-top: 0.35rem;
+  }
 `
 
 const parseBlockTextContent = (block) => {
@@ -91,9 +160,27 @@ const scrollToProjectsGrid = () => {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-const TagsMenu = ({ selectedTags = [], onSelectTags }) => {
+const TagsMenu = ({ selectedTags = [], onSelectTags, onHeightChange }) => {
   const [tags, setTags] = useState([])
   const [loading, setLoading] = useState(true)
+  const wrapperRef = useRef(null)
+
+  useLayoutEffect(() => {
+    if (!onHeightChange || !wrapperRef.current) return
+    const el = wrapperRef.current
+    const observer = new ResizeObserver(() => {
+      if (window.innerWidth <= 767) {
+        onHeightChange(el.offsetHeight)
+      } else {
+        onHeightChange(0)
+      }
+    })
+    observer.observe(el)
+    if (window.innerWidth <= 767) {
+      onHeightChange(el.offsetHeight)
+    }
+    return () => observer.disconnect()
+  }, [onHeightChange, tags.length, selectedTags.length])
 
   const handleTagClick = (tag) => {
     const next = selectedTags.includes(tag)
@@ -158,7 +245,7 @@ const TagsMenu = ({ selectedTags = [], onSelectTags }) => {
   if (loading || tags.length === 0) return null
 
   return (
-    <MenuWrapper>
+    <MenuWrapper ref={wrapperRef}>
       <TagList>
         {tags.map((tag) => (
           <TagItem key={tag}>

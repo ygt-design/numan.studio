@@ -5,14 +5,16 @@ import TagsMenu from './TagsMenu'
 
 const Home = () => {
   const [selectedTags, setSelectedTags] = useState([])
+  const [tagsMenuHeight, setTagsMenuHeight] = useState(0)
 
   return (
     <>
       <TagsMenu
         selectedTags={selectedTags}
         onSelectTags={setSelectedTags}
+        onHeightChange={setTagsMenuHeight}
       />
-      <Intro />
+      <Intro tagsMenuHeight={tagsMenuHeight} />
       <ProjectsGrid selectedTags={selectedTags} />
     </>
   )

@@ -109,7 +109,6 @@ const ChannelItem = styled.li`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 250px;
   padding: 0.5rem;
   gap: 0.5rem;
   flex-wrap: wrap;
@@ -163,6 +162,18 @@ const FieldGroup = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+`
+
+const FieldRow = styled.div`
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  flex-wrap: wrap;
+
+  ${FieldGroup} {
+    flex: 1;
+    min-width: 120px;
+  }
 `
 
 const Label = styled.label`
@@ -363,7 +374,6 @@ const ReorderItemWrapper = styled.li`
   background: white;
   cursor: grab;
   user-select: none;
-  max-width: 250px;
   touch-action: none;
 
   &:active {
@@ -468,6 +478,9 @@ const InputPage = () => {
   const [projectName, setProjectName] = useState('')
   const [description, setDescription] = useState('')
   const [tags, setTags] = useState('')
+  const [year, setYear] = useState('')
+  const [medium, setMedium] = useState('')
+  const [dimensions, setDimensions] = useState('')
   const [coverFile, setCoverFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState(null)
   const [imageFiles, setImageFiles] = useState([])
@@ -706,6 +719,30 @@ const InputPage = () => {
         })
       }
 
+      if (year.trim()) {
+        setSubmitProgress('Adding year…')
+        await createBlock(newChannel.id, {
+          value: year.trim(),
+          title: 'Year',
+        })
+      }
+
+      if (medium.trim()) {
+        setSubmitProgress('Adding medium…')
+        await createBlock(newChannel.id, {
+          value: medium.trim(),
+          title: 'Medium',
+        })
+      }
+
+      if (dimensions.trim()) {
+        setSubmitProgress('Adding dimensions…')
+        await createBlock(newChannel.id, {
+          value: dimensions.trim(),
+          title: 'Dimensions',
+        })
+      }
+
       if (coverFile) {
         setSubmitProgress('Uploading cover image…')
         const coverUrl = await uploadFileToArena(coverFile)
@@ -878,6 +915,42 @@ const InputPage = () => {
               />
               <HintText>Separate multiple tags with commas (virgül)</HintText>
             </FieldGroup>
+
+            <FieldRow>
+              <FieldGroup>
+                <Label htmlFor="year">Year</Label>
+                <Input
+                  id="year"
+                  type="text"
+                  placeholder="e.g. 2024"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  disabled={submitting}
+                />
+              </FieldGroup>
+              <FieldGroup>
+                <Label htmlFor="medium">Medium</Label>
+                <Input
+                  id="medium"
+                  type="text"
+                  placeholder="e.g. ceramic, stoneware"
+                  value={medium}
+                  onChange={(e) => setMedium(e.target.value)}
+                  disabled={submitting}
+                />
+              </FieldGroup>
+              <FieldGroup>
+                <Label htmlFor="dimensions">Dimensions</Label>
+                <Input
+                  id="dimensions"
+                  type="text"
+                  placeholder="e.g. 30 × 20 × 15 cm"
+                  value={dimensions}
+                  onChange={(e) => setDimensions(e.target.value)}
+                  disabled={submitting}
+                />
+              </FieldGroup>
+            </FieldRow>
 
             <FieldGroup>
               <Label>Cover image</Label>
