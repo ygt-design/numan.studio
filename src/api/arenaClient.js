@@ -227,7 +227,7 @@ const DEFAULT_GROUP_ID = 36176; // numan-studio group
 
 export const createChannel = async (
   title,
-  { groupId = DEFAULT_GROUP_ID, visibility = "closed" } = {},
+  { groupId = DEFAULT_GROUP_ID, visibility = "private" } = {},
 ) => {
   if (!title) throw new Error("Channel title is required.");
 

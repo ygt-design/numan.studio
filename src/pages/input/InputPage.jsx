@@ -420,7 +420,7 @@ const InputPage = () => {
     try {
       setSubmitProgress('Creating channel…')
       const channelTitle = `Project / ${trimmedName}`
-      const newChannel = await createChannel(channelTitle)
+      const newChannel = await createChannel(channelTitle, { visibility: 'private' })
 
       if (description.trim()) {
         setSubmitProgress('Adding description…')
