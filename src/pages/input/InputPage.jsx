@@ -265,7 +265,8 @@ const FileDropZone = styled.label`
   justify-content: center;
   gap: 0.5rem;
   padding: 1.5rem;
-  border: 1px dashed #ccc;
+  border: 1px dashed ${(props) => (props.$isDragOver ? 'black' : '#ccc')};
+  background: ${(props) => (props.$isDragOver ? '#f0f0f0' : 'transparent')};
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
   min-height: 120px;
@@ -471,6 +472,9 @@ const InputPage = () => {
   const [imageFiles, setImageFiles] = useState([])
   const [imagePreviews, setImagePreviews] = useState([])
 
+  const [coverDragOver, setCoverDragOver] = useState(false)
+  const [imagesDragOver, setImagesDragOver] = useState(false)
+
   const [submitting, setSubmitting] = useState(false)
   const [submitProgress, setSubmitProgress] = useState('')
   const [submitError, setSubmitError] = useState(null)
@@ -581,6 +585,9 @@ const InputPage = () => {
     }
   }
 
+  const getImageFiles = (fileList) =>
+    Array.from(fileList || []).filter((f) => f.type && f.type.startsWith('image/'))
+
   const handleCoverChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -590,10 +597,28 @@ const InputPage = () => {
     setCoverPreview(url)
   }
 
-  const removeCover = () => {
-    if (coverPreview) URL.revokeObjectURL(coverPreview)
-    setCoverFile(null)
-    setCoverPreview(null)
+  const handleCoverDrop = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCoverDragOver(false)
+    if (submitting) return
+    const files = getImageFiles(e.dataTransfer?.files)
+    const file = files[0]
+    if (!file) return
+    setCoverFile(file)
+    setCoverPreview(URL.createObjectURL(file))
+  }
+
+  const handleCoverDragOver = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCoverDragOver(true)
+  }
+
+  const handleCoverDragLeave = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCoverDragOver(false)
   }
 
   const handleImagesChange = (e) => {
@@ -605,6 +630,38 @@ const InputPage = () => {
       ...prev,
       ...files.map((f) => URL.createObjectURL(f)),
     ])
+  }
+
+  const handleImagesDrop = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setImagesDragOver(false)
+    if (submitting) return
+    const files = getImageFiles(e.dataTransfer?.files)
+    if (!files.length) return
+    setImageFiles((prev) => [...prev, ...files])
+    setImagePreviews((prev) => [
+      ...prev,
+      ...files.map((f) => URL.createObjectURL(f)),
+    ])
+  }
+
+  const handleImagesDragOver = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setImagesDragOver(true)
+  }
+
+  const handleImagesDragLeave = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setImagesDragOver(false)
+  }
+
+  const removeCover = () => {
+    if (coverPreview) URL.revokeObjectURL(coverPreview)
+    setCoverFile(null)
+    setCoverPreview(null)
   }
 
   const removeImage = (index) => {
@@ -816,9 +873,14 @@ const InputPage = () => {
                   </PreviewItem>
                 </PreviewGrid>
               ) : (
-                <FileDropZone>
+                <FileDropZone
+                  $isDragOver={coverDragOver}
+                  onDragOver={handleCoverDragOver}
+                  onDragLeave={handleCoverDragLeave}
+                  onDrop={handleCoverDrop}
+                >
                   <DropZoneText>
-                    Click to select a cover image
+                    Drag an image here or click to select
                   </DropZoneText>
                   <input
                     type="file"
@@ -832,9 +894,14 @@ const InputPage = () => {
 
             <FieldGroup>
               <Label>Additional images</Label>
-              <FileDropZone>
+              <FileDropZone
+                $isDragOver={imagesDragOver}
+                onDragOver={handleImagesDragOver}
+                onDragLeave={handleImagesDragLeave}
+                onDrop={handleImagesDrop}
+              >
                 <DropZoneText>
-                  Click to add images
+                  Drag images here or click to add
                 </DropZoneText>
                 <input
                   type="file"
