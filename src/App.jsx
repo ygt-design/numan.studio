@@ -54,7 +54,7 @@ const App = () => {
       <Routes>
         <Route path="/" element={<main><Home /></main>} />
         <Route path="/project/:slug" element={<ProjectDetail />} />
-        <Route path="/input" element={<InputPage />} />
+        <Route path="/input-kobramurat" element={<InputPage />} />
       </Routes>
     </>
   )
