@@ -89,12 +89,9 @@ const TagButton = styled.button`
   border: 0.5px solid #ccc;
   padding: 0.35rem;
   width: fit-content;
-  max-width: 100%;
   margin-bottom: 0;
   background-color: ${(props) => (props.$selected ? '#ccc' : 'white')};
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 
   &:hover {
     background-color: #ccc;
@@ -102,7 +99,6 @@ const TagButton = styled.button`
   }
 
   @media (min-width: 768px) {
-    width: 100%;
     min-width: 0;
     box-sizing: border-box;
   }
@@ -111,7 +107,7 @@ const TagButton = styled.button`
     font-size: 0.8rem;
     padding: 0.25rem 0.5rem;
     flex-shrink: 0;
-  }
+    }
 `
 
 const ClearButton = styled.button`
@@ -159,6 +155,12 @@ const scrollToProjectsGrid = () => {
   const el = document.getElementById('projects-grid')
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
+
+const capitalizeWords = (str) =>
+  (str || '')
+    .split(' ')
+    .map((word) => (word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
+    .join(' ')
 
 const TagsMenu = ({ selectedTags = [], onSelectTags, onHeightChange }) => {
   const [tags, setTags] = useState([])
@@ -254,7 +256,7 @@ const TagsMenu = ({ selectedTags = [], onSelectTags, onHeightChange }) => {
               $selected={selectedTags.includes(tag)}
               onClick={() => handleTagClick(tag)}
             >
-              {tag}
+              {capitalizeWords(tag)}
             </TagButton>
           </TagItem>
         ))}

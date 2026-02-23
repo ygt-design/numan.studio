@@ -155,19 +155,19 @@ const ArenaButton = styled.a`
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.75rem;
 `
 
 const FieldGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
 `
 
 const FieldRow = styled.div`
   display: flex;
   flex-direction: row;
-  gap: 1rem;
+  gap: 1.5rem;
   flex-wrap: wrap;
 
   ${FieldGroup} {

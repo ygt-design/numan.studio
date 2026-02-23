@@ -74,6 +74,7 @@ const ProjectName = styled.h1`
   line-height: 0.95;
   margin: 0 0 1rem 0;
   text-transform: uppercase;
+  text-align: center;
 
   @media (min-width: 768px) {
     font-size: 4.5rem;
@@ -88,6 +89,18 @@ const ProjectName = styled.h1`
   @media (min-width: 1440px) {
     font-size: 7rem;
   }
+`
+
+const ProjectMeta = styled.div`
+  font-family: 'PPNeueMontreal', sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #666;
+  margin: 0 0 1.5rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem 1.5rem;
 `
 
 const Description = styled.div`
@@ -173,11 +186,25 @@ const extractTextContent = (block) => {
 const blockTitle = (block) =>
   (block.title || block.generated_title || '').toLowerCase().trim()
 
+const parseBlockTextContent = (block) => {
+  if (!block) return ''
+  const content = block.content
+  if (content && typeof content === 'object' && !Array.isArray(content)) {
+    return (content.plain || content.markdown || '').trim()
+  }
+  if (typeof content === 'string') return content.trim()
+  if (block.content_html) return block.content_html.replace(/<[^>]*>/g, '').trim()
+  return ''
+}
+
 const ProjectDetail = () => {
   const { slug } = useParams()
   const [channel, setChannel] = useState(null)
   const [imageBlocks, setImageBlocks] = useState([])
   const [descriptionHtml, setDescriptionHtml] = useState('')
+  const [year, setYear] = useState('')
+  const [medium, setMedium] = useState('')
+  const [dimensions, setDimensions] = useState('')
   const [error, setError] = useState(null)
   const { setIsLoading } = useLoading()
   const loadingSource = 'project-detail'
@@ -200,6 +227,13 @@ const ProjectDetail = () => {
 
         const descBlock = blocks.find((b) => blockTitle(b) === 'description')
         setDescriptionHtml(extractTextContent(descBlock))
+
+        const yearBlock = blocks.find((b) => blockTitle(b) === 'year')
+        const mediumBlock = blocks.find((b) => blockTitle(b) === 'medium')
+        const dimensionsBlock = blocks.find((b) => blockTitle(b) === 'dimensions')
+        setYear(parseBlockTextContent(yearBlock))
+        setMedium(parseBlockTextContent(mediumBlock))
+        setDimensions(parseBlockTextContent(dimensionsBlock))
 
         const withImages = blocks.filter((b) => extractImageUrl(b))
         const coverIndex = withImages.findIndex((b) => blockTitle(b) === 'cover')
@@ -254,6 +288,13 @@ const ProjectDetail = () => {
 
         <RightColumn>
           {projectName && <ProjectName>{projectName}</ProjectName>}
+          {(year || medium || dimensions) && (
+            <ProjectMeta>
+              {year && <span>{year}</span>}
+              {medium && <span>{medium}</span>}
+              {dimensions && <span>{dimensions}</span>}
+            </ProjectMeta>
+          )}
           {descriptionHtml && (
             <Description
               dangerouslySetInnerHTML={{ __html: descriptionHtml }}
