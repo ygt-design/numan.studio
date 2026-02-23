@@ -176,9 +176,9 @@ const Input = styled.input`
   font-family: 'PPNeueMontreal', sans-serif;
   font-size: 1rem;
   line-height: 1.45;
-  padding: 0.5rem 0;
+  padding: 0.5rem;
   border: none;
-  border-bottom: 1px solid #ccc;
+  border: 1px solid #ccc;
   color: black;
   background: transparent;
   outline: none;
@@ -186,7 +186,7 @@ const Input = styled.input`
   width: 100%;
 
   &:focus {
-    border-bottom-color: black;
+    border-color: black;
   }
 
   &::placeholder {
@@ -198,9 +198,9 @@ const Textarea = styled.textarea`
   font-family: 'PPNeueMontreal', sans-serif;
   font-size: 1rem;
   line-height: 1.45;
-  padding: 0.5rem 0;
+  padding: 0.5rem;
   border: none;
-  border-bottom: 1px solid #ccc;
+  border: 1px solid #ccc;
   background: transparent;
   color: black;
   outline: none;
@@ -210,7 +210,7 @@ const Textarea = styled.textarea`
   transition: border-color 0.15s ease;
 
   &:focus {
-    border-bottom-color: black;
+    border-color: black;
   }
 
   &::placeholder {
@@ -467,6 +467,7 @@ const InputPage = () => {
 
   const [projectName, setProjectName] = useState('')
   const [description, setDescription] = useState('')
+  const [tags, setTags] = useState('')
   const [coverFile, setCoverFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState(null)
   const [imageFiles, setImageFiles] = useState([])
@@ -697,6 +698,14 @@ const InputPage = () => {
         })
       }
 
+      if (tags.trim()) {
+        setSubmitProgress('Adding tags…')
+        await createBlock(newChannel.id, {
+          value: tags.trim(),
+          title: 'Tags',
+        })
+      }
+
       if (coverFile) {
         setSubmitProgress('Uploading cover image…')
         const coverUrl = await uploadFileToArena(coverFile)
@@ -855,6 +864,19 @@ const InputPage = () => {
                 onChange={(e) => setDescription(e.target.value)}
                 disabled={submitting}
               />
+            </FieldGroup>
+
+            <FieldGroup>
+              <Label htmlFor="tags">Tags</Label>
+              <Input
+                id="tags"
+                type="text"
+                placeholder="e.g. sculpture, ceramic, 2024"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                disabled={submitting}
+              />
+              <HintText>Separate multiple tags with commas (virgül)</HintText>
             </FieldGroup>
 
             <FieldGroup>
