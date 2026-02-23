@@ -20,25 +20,26 @@ const ProjectsGridContainer = styled(GridContainer)`
   row-gap: 20px;
 `
 
+/* Column 1 left empty so fixed tags menu stays visible while scrolling */
 const ResponsiveProjectColumn = styled(GridColumn)`
   @media (min-width: 768px) {
     grid-column: ${(props) => {
       if (props.$layoutType === 'double-left') {
-        return '1 / 7';
+        return '2 / 8';
       } else if (props.$layoutType === 'double-right') {
-        return '7 / 13';
+        return '8 / 13';
       } else if (props.$layoutType === 'double-right-first') {
-        return '7 / 10';
+        return '8 / 11';
       } else if (props.$layoutType === 'double-right-second') {
-        return '10 / 13';
+        return '11 / 13';
       } else if (props.$layoutType === 'double-left-first') {
-        return '1 / 4';
+        return '2 / 5';
       } else if (props.$layoutType === 'double-left-second') {
-        return '4 / 7';
+        return '5 / 8';
       } else if (props.$layoutType === 'single-left') {
-        return '1 / 7';
+        return '2 / 8';
       } else if (props.$layoutType === 'single-right') {
-        return '7 / 13';
+        return '8 / 13';
       }
       return 'span 12';
     }};
@@ -85,52 +86,58 @@ const parseBlockTextContent = (block) => {
   return ''
 }
 
-const ProjectsGrid = () => {
+const ProjectsGrid = ({ selectedTags = [] }) => {
   const [projects, setProjects] = useState(() => getProjectsCache() || [])
   const [error, setError] = useState(null)
   const navigate = useNavigate()
   const { setIsLoading } = useLoading()
   const loadingSource = 'projects'
 
-  // Create layout configuration once when projects change
+  const filteredProjects = useMemo(() => {
+    if (!selectedTags || selectedTags.length === 0) return projects
+    const set = new Set(selectedTags)
+    return projects.filter((p) => p.tags?.some((t) => set.has(t)))
+  }, [projects, selectedTags])
+
+  // Create layout configuration once when filtered projects change
   const layoutConfig = useMemo(() => {
-    if (projects.length === 0) return []
+    if (filteredProjects.length === 0) return []
 
     const layout = []
     let projectIndex = 0
     let rowIndex = 0
 
-    while (projectIndex < projects.length) {
+    while (projectIndex < filteredProjects.length) {
       // Cycle through the curated layout pattern
       const rowType = curatedLayout[rowIndex % curatedLayout.length]
 
-      if (rowType === 'double-left-right' && projectIndex + 1 < projects.length) {
+      if (rowType === 'double-left-right' && projectIndex + 1 < filteredProjects.length) {
         // Two items: left (1-8) and right (5-12)
         layout.push({
           type: 'double',
           items: [
-            { project: projects[projectIndex], layoutType: 'double-left' },
-            { project: projects[projectIndex + 1], layoutType: 'double-right' },
+            { project: filteredProjects[projectIndex], layoutType: 'double-left' },
+            { project: filteredProjects[projectIndex + 1], layoutType: 'double-right' },
           ],
         })
         projectIndex += 2
-      } else if (rowType === 'double-right-both' && projectIndex + 1 < projects.length) {
+      } else if (rowType === 'double-right-both' && projectIndex + 1 < filteredProjects.length) {
         // Two items: both in columns 5-12
         layout.push({
           type: 'double',
           items: [
-            { project: projects[projectIndex], layoutType: 'double-right-first' },
-            { project: projects[projectIndex + 1], layoutType: 'double-right-second' },
+            { project: filteredProjects[projectIndex], layoutType: 'double-right-first' },
+            { project: filteredProjects[projectIndex + 1], layoutType: 'double-right-second' },
           ],
         })
         projectIndex += 2
-      } else if (rowType === 'double-left-both' && projectIndex + 1 < projects.length) {
+      } else if (rowType === 'double-left-both' && projectIndex + 1 < filteredProjects.length) {
         // Two items: both in columns 1-9
         layout.push({
           type: 'double',
           items: [
-            { project: projects[projectIndex], layoutType: 'double-left-first' },
-            { project: projects[projectIndex + 1], layoutType: 'double-left-second' },
+            { project: filteredProjects[projectIndex], layoutType: 'double-left-first' },
+            { project: filteredProjects[projectIndex + 1], layoutType: 'double-left-second' },
           ],
         })
         projectIndex += 2
@@ -139,7 +146,7 @@ const ProjectsGrid = () => {
         layout.push({
           type: 'single',
           items: [
-            { project: projects[projectIndex], layoutType: 'single-left' },
+            { project: filteredProjects[projectIndex], layoutType: 'single-left' },
           ],
         })
         projectIndex += 1
@@ -148,7 +155,7 @@ const ProjectsGrid = () => {
         layout.push({
           type: 'single',
           items: [
-            { project: projects[projectIndex], layoutType: 'single-right' },
+            { project: filteredProjects[projectIndex], layoutType: 'single-right' },
           ],
         })
         projectIndex += 1
@@ -157,7 +164,7 @@ const ProjectsGrid = () => {
         layout.push({
           type: 'single',
           items: [
-            { project: projects[projectIndex], layoutType: 'single-left' },
+            { project: filteredProjects[projectIndex], layoutType: 'single-left' },
           ],
         })
         projectIndex += 1
@@ -166,7 +173,7 @@ const ProjectsGrid = () => {
     }
 
     return layout
-  }, [projects])
+  }, [filteredProjects])
 
   useEffect(() => {
     const cached = getProjectsCache()
@@ -212,6 +219,13 @@ const ProjectsGrid = () => {
                   .trim() === 'order'
             )
 
+            const tagsBlock = blocks.find(
+              (block) =>
+                (block.title || block.generated_title || '')
+                  .toLowerCase()
+                  .trim() === 'tags'
+            )
+
             const imageUrl =
               coverBlock?.image?.large?.src ||
               coverBlock?.image?.medium?.src ||
@@ -222,6 +236,11 @@ const ProjectsGrid = () => {
             const orderText = orderBlock ? parseBlockTextContent(orderBlock) : ''
             const orderNum = orderText ? parseInt(orderText, 10) : NaN
 
+            const tagsText = tagsBlock ? parseBlockTextContent(tagsBlock) : ''
+            const projectTags = tagsText
+              ? tagsText.split(',').map((t) => t.trim()).filter(Boolean)
+              : []
+
             const channelTitle = channel.title || channel.slug || ''
             const projectName = channelTitle.replace(/^Project\s*\/\s*/i, '').trim()
 
@@ -230,6 +249,7 @@ const ProjectsGrid = () => {
               coverImage: imageUrl,
               projectName: projectName || channelTitle,
               order: isNaN(orderNum) ? Infinity : orderNum,
+              tags: projectTags,
             }
           })
         )
@@ -275,7 +295,7 @@ const ProjectsGrid = () => {
 
   if (error) {
     return (
-      <ProjectsSection>
+      <ProjectsSection id="projects-grid">
         <p>Error loading projects: {error.message}</p>
       </ProjectsSection>
     )
@@ -283,14 +303,17 @@ const ProjectsGrid = () => {
 
   if (projects.length === 0) {
     return (
-      <ProjectsSection>
+      <ProjectsSection id="projects-grid">
         <p>No projects found.</p>
       </ProjectsSection>
     )
   }
 
   return (
-    <ProjectsSection>
+    <ProjectsSection id="projects-grid">
+      {selectedTags.length > 0 && filteredProjects.length === 0 ? (
+        <p>No projects match the selected tags.</p>
+      ) : null}
       <ProjectsGridContainer>
         {layoutConfig.map((row) =>
           row.items.map((item) => (
