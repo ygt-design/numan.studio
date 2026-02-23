@@ -4,6 +4,7 @@ import styled from 'styled-components'
 import { getChannelContents, getGroupChannels } from '../../api/arenaClient.js'
 import { GridContainer, GridColumn } from '../../styles'
 import { useLoading } from '../../contexts/LoadingContext'
+import { getProjectsCache, setProjectsCache } from '../../utils/projectsCache'
 
 const DEFAULT_GROUP_SLUG =
   import.meta.env.VITE_ARENA_GROUP_SLUG?.trim() ||
@@ -74,13 +75,18 @@ const curatedLayout = [
   'double-left-both',   // 7th: 2 small on left
 ]
 
-// Cache for projects data to persist across navigation
-let projectsCache = null
-let projectsCacheTimestamp = null
-const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+const parseBlockTextContent = (block) => {
+  const content = block.content
+  if (content && typeof content === 'object' && !Array.isArray(content)) {
+    return (content.plain || content.markdown || '').trim()
+  }
+  if (typeof content === 'string') return content.trim()
+  if (block.content_html) return block.content_html.replace(/<[^>]*>/g, '').trim()
+  return ''
+}
 
 const ProjectsGrid = () => {
-  const [projects, setProjects] = useState(projectsCache || [])
+  const [projects, setProjects] = useState(() => getProjectsCache() || [])
   const [error, setError] = useState(null)
   const navigate = useNavigate()
   const { setIsLoading } = useLoading()
@@ -163,14 +169,9 @@ const ProjectsGrid = () => {
   }, [projects])
 
   useEffect(() => {
-    // Check if we have valid cached data
-    const now = Date.now()
-    if (
-      projectsCache &&
-      projectsCacheTimestamp &&
-      now - projectsCacheTimestamp < CACHE_DURATION
-    ) {
-      setProjects(projectsCache)
+    const cached = getProjectsCache()
+    if (cached) {
+      setProjects(cached)
       setIsLoading(false, loadingSource)
       return
     }
@@ -204,12 +205,22 @@ const ProjectsGrid = () => {
                   .trim() === 'cover'
             )
 
+            const orderBlock = blocks.find(
+              (block) =>
+                (block.title || block.generated_title || '')
+                  .toLowerCase()
+                  .trim() === 'order'
+            )
+
             const imageUrl =
               coverBlock?.image?.large?.src ||
               coverBlock?.image?.medium?.src ||
               coverBlock?.image?.src ||
               coverBlock?.image?.small?.src ||
               null
+
+            const orderText = orderBlock ? parseBlockTextContent(orderBlock) : ''
+            const orderNum = orderText ? parseInt(orderText, 10) : NaN
 
             const channelTitle = channel.title || channel.slug || ''
             const projectName = channelTitle.replace(/^Project\s*\/\s*/i, '').trim()
@@ -218,16 +229,22 @@ const ProjectsGrid = () => {
               ...channel,
               coverImage: imageUrl,
               projectName: projectName || channelTitle,
+              order: isNaN(orderNum) ? Infinity : orderNum,
             }
           })
         )
 
         const filteredProjects = projectsWithCovers.filter((p) => p.coverImage)
 
+        filteredProjects.sort((a, b) => {
+          if (a.order !== b.order) return a.order - b.order
+          const aTime = a.created_at ? new Date(a.created_at).getTime() : 0
+          const bTime = b.created_at ? new Date(b.created_at).getTime() : 0
+          return aTime - bTime
+        })
+
         if (!shouldIgnore) {
-          // Update cache
-          projectsCache = filteredProjects
-          projectsCacheTimestamp = now
+          setProjectsCache(filteredProjects)
           setProjects(filteredProjects)
           setError(null)
         }

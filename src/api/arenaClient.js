@@ -223,6 +223,38 @@ const postToArena = async (endpoint, body = {}) => {
   return response.json();
 };
 
+const putToArena = async (endpoint, body = {}) => {
+  const url = new URL(`${API_BASE_URL}/${endpoint}`);
+  const config = buildRequestConfig();
+
+  const response = await fetch(url.toString(), {
+    ...config,
+    method: "PUT",
+    headers: {
+      ...config.headers,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const err = await response.json();
+      detail = err.errors
+        ? err.errors.map((e) => e.message).join("; ")
+        : err.title || "";
+    } catch {
+      /* ignore parse failure */
+    }
+    throw new Error(
+      `Are.na PUT to "${endpoint}" failed (${response.status}). ${detail}`.trim(),
+    );
+  }
+
+  return response.json();
+};
+
 const DEFAULT_GROUP_ID = 36176; // numan-studio group
 
 export const createChannel = async (
@@ -245,6 +277,17 @@ export const createBlock = async (channelId, { value, title } = {}) => {
   if (title) body.title = title;
 
   return postToArena("blocks", body);
+};
+
+export const updateBlock = async (blockId, { content, title, description } = {}) => {
+  if (!blockId) throw new Error("Block ID is required to update a block.");
+
+  const body = {};
+  if (content !== undefined) body.content = content;
+  if (title !== undefined) body.title = title;
+  if (description !== undefined) body.description = description;
+
+  return putToArena(`blocks/${blockId}`, body);
 };
 
 const V2_BASE_URL = "https://api.are.na/v2";

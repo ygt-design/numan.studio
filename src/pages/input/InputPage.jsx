@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import styled from 'styled-components'
-import { getGroupChannels, createChannel, createBlock, uploadFileToArena } from '../../api/arenaClient.js'
+import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { getGroupChannels, getChannelContents, createChannel, createBlock, updateBlock, uploadFileToArena } from '../../api/arenaClient.js'
+import { invalidateProjectsCache } from '../../utils/projectsCache'
 import { GridContainer, GridColumn } from '../../styles'
 
 const DEFAULT_GROUP_SLUG =
@@ -123,7 +127,13 @@ const ChannelItem = styled.li`
     background-color: #ccc;
     color: white;
   }
+`
 
+const ChannelItemName = styled.span`
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 `
 
 const ArenaButton = styled.a`
@@ -325,11 +335,134 @@ const ProgressText = styled.span`
   color: #666;
 `
 
+const ReorderSection = styled.div`
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #eee;
+`
+
+const ReorderList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+`
+
+const ReorderItemWrapper = styled.li`
+  font-family: 'PPNeueMontreal', sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 0.5px solid #ccc;
+  background: white;
+  cursor: grab;
+  user-select: none;
+  max-width: 250px;
+  touch-action: none;
+
+  &:active {
+    cursor: grabbing;
+  }
+`
+
+const ReorderPosition = styled.span`
+  font-family: 'PPNeueMontreal', sans-serif;
+  font-size: 0.75rem;
+  color: #999;
+  min-width: 1.25rem;
+  text-align: right;
+  flex-shrink: 0;
+`
+
+const ReorderName = styled.span`
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`
+
+const DragHandle = styled.span`
+  font-size: 0.85rem;
+  color: #bbb;
+  flex-shrink: 0;
+`
+
+const SaveOrderButton = styled.button`
+  font-family: 'PPNeueMontreal', sans-serif;
+  font-size: 0.85rem;
+  padding: 0.5rem;
+  margin-top: 0.75rem;
+  background: black;
+  color: white;
+  border: 0.5px solid black;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background-color: #ccc;
+    color: black;
+  }
+
+  &:disabled {
+    background-color: #ccc;
+    color: black;
+  }
+`
+
+const OrderMessage = styled.span`
+  font-family: 'PPNeueMontreal', sans-serif;
+  font-size: 0.8rem;
+  display: block;
+  margin-top: 0.5rem;
+  color: ${(props) => (props.$error ? '#c00' : '#090')};
+`
+
+const parseBlockTextContent = (block) => {
+  const content = block.content
+  if (content && typeof content === 'object' && !Array.isArray(content)) {
+    return (content.plain || content.markdown || '').trim()
+  }
+  if (typeof content === 'string') return content.trim()
+  if (block.content_html) return block.content_html.replace(/<[^>]*>/g, '').trim()
+  return ''
+}
+
+const SortableProjectItem = ({ id, name, position }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <ReorderItemWrapper ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <ReorderPosition>{position}</ReorderPosition>
+      <ReorderName>{name}</ReorderName>
+      <DragHandle>⠿</DragHandle>
+    </ReorderItemWrapper>
+  )
+}
+
 const InputPage = () => {
   const navigate = useNavigate()
 
   const [channels, setChannels] = useState([])
   const [channelsLoading, setChannelsLoading] = useState(true)
+
+  const [reorderItems, setReorderItems] = useState([])
+  const [reorderLoading, setReorderLoading] = useState(true)
+  const [orderDirty, setOrderDirty] = useState(false)
+  const [savingOrder, setSavingOrder] = useState(false)
+  const [orderSaveMessage, setOrderSaveMessage] = useState(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   const [projectName, setProjectName] = useState('')
   const [description, setDescription] = useState('')
@@ -343,10 +476,17 @@ const InputPage = () => {
   const [submitError, setSubmitError] = useState(null)
   const [submitSuccess, setSubmitSuccess] = useState(null)
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
   useEffect(() => {
     let ignore = false
 
     const load = async () => {
+      setReorderLoading(true)
+
       try {
         const all = await getGroupChannels(DEFAULT_GROUP_SLUG, {
           per: 100,
@@ -359,17 +499,87 @@ const InputPage = () => {
           (ch.title || ch.slug || '').trim().startsWith('Project'),
         )
 
-        setChannels(projects)
+        const withOrder = await Promise.all(
+          projects.map(async (ch) => {
+            const blocks = await getChannelContents(ch.slug, { per: 100 })
+            const orderBlock = blocks.find(
+              (b) => (b.title || b.generated_title || '').toLowerCase().trim() === 'order'
+            )
+            const orderText = orderBlock ? parseBlockTextContent(orderBlock) : ''
+            const orderNum = orderText ? parseInt(orderText, 10) : NaN
+            return {
+              channel: ch,
+              orderBlock: orderBlock || null,
+              orderValue: isNaN(orderNum) ? Infinity : orderNum,
+            }
+          })
+        )
+
+        withOrder.sort((a, b) => {
+          if (a.orderValue !== b.orderValue) return a.orderValue - b.orderValue
+          const aTime = a.channel.created_at ? new Date(a.channel.created_at).getTime() : 0
+          const bTime = b.channel.created_at ? new Date(b.channel.created_at).getTime() : 0
+          return aTime - bTime
+        })
+
+        if (!ignore) {
+          setChannels(withOrder.map((item) => item.channel))
+          setReorderItems(withOrder)
+          setOrderDirty(false)
+        }
       } catch {
         /* channel list is informational; silently degrade */
       } finally {
-        if (!ignore) setChannelsLoading(false)
+        if (!ignore) {
+          setChannelsLoading(false)
+          setReorderLoading(false)
+        }
       }
     }
 
     load()
     return () => { ignore = true }
+  }, [reloadKey])
+
+  const handleDragEnd = useCallback((event) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    setReorderItems((items) => {
+      const oldIndex = items.findIndex((item) => String(item.channel.id) === active.id)
+      const newIndex = items.findIndex((item) => String(item.channel.id) === over.id)
+      return arrayMove(items, oldIndex, newIndex)
+    })
+    setOrderDirty(true)
+    setOrderSaveMessage(null)
   }, [])
+
+  const handleSaveOrder = async () => {
+    setSavingOrder(true)
+    setOrderSaveMessage(null)
+
+    try {
+      await Promise.all(
+        reorderItems.map(async (item, index) => {
+          const position = String(index + 1)
+          if (item.orderBlock) {
+            await updateBlock(item.orderBlock.id, { content: position })
+          } else {
+            await createBlock(item.channel.id, { value: position, title: 'Order' })
+          }
+        })
+      )
+
+      invalidateProjectsCache()
+      setOrderSaveMessage('Order saved.')
+      setOrderDirty(false)
+      setReloadKey((k) => k + 1)
+    } catch (err) {
+      setOrderSaveMessage(`Failed: ${err.message}`)
+    } finally {
+      setSavingOrder(false)
+    }
+  }
 
   const handleCoverChange = (e) => {
     const file = e.target.files?.[0]
@@ -445,6 +655,14 @@ const InputPage = () => {
         await createBlock(newChannel.id, { value: url })
       }
 
+      setSubmitProgress('Setting order…')
+      const maxOrder = reorderItems.reduce(
+        (max, item) => (item.orderValue !== Infinity ? Math.max(max, item.orderValue) : max),
+        0,
+      )
+      await createBlock(newChannel.id, { value: String(maxOrder + 1), title: 'Order' })
+
+      invalidateProjectsCache()
       setSubmitProgress('')
       setSubmitSuccess(`Created "${channelTitle}". Redirecting…`)
 
@@ -481,20 +699,74 @@ const InputPage = () => {
 
           <ChannelList>
             {channels.map((ch) => (
-              <ChannelItem key={ch.id || ch.slug}>
-                <Link to={`/project/${ch.slug}`}>
-                  {deriveProjectName(ch.title || ch.slug)}
-                </Link>
+              <ChannelItem
+                key={ch.id || ch.slug}
+                onClick={() => navigate(`/project/${ch.slug}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    navigate(`/project/${ch.slug}`)
+                  }
+                }}
+              >
+                <ChannelItemName>{deriveProjectName(ch.title || ch.slug)}</ChannelItemName>
                 <ArenaButton
                   href={`https://www.are.na/${DEFAULT_GROUP_SLUG}/${ch.slug}`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   Are.na
                 </ArenaButton>
               </ChannelItem>
             ))}
           </ChannelList>
+
+          {!reorderLoading && reorderItems.length > 0 && (
+            <ReorderSection>
+              <SectionTitle style={{ fontSize: '1.25rem', marginBottom: '0.75rem' }}>
+                Reorder projects
+              </SectionTitle>
+              <HintText style={{ display: 'block', marginBottom: '0.75rem' }}>
+                Drag to reorder. 1 = top of grid.
+              </HintText>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={reorderItems.map((item) => String(item.channel.id))}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <ReorderList>
+                    {reorderItems.map((item, index) => (
+                      <SortableProjectItem
+                        key={item.channel.id}
+                        id={String(item.channel.id)}
+                        name={deriveProjectName(item.channel.title || item.channel.slug)}
+                        position={index + 1}
+                      />
+                    ))}
+                  </ReorderList>
+                </SortableContext>
+              </DndContext>
+              <SaveOrderButton
+                type="button"
+                onClick={handleSaveOrder}
+                disabled={savingOrder || !orderDirty}
+              >
+                {savingOrder ? 'Saving…' : 'Save order'}
+              </SaveOrderButton>
+              {orderSaveMessage && (
+                <OrderMessage $error={orderSaveMessage.startsWith('Failed')}>
+                  {orderSaveMessage}
+                </OrderMessage>
+              )}
+            </ReorderSection>
+          )}
         </LeftColumn>
 
         <RightColumn>
