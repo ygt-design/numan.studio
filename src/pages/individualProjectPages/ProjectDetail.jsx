@@ -1,71 +1,41 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import styled from 'styled-components'
 import { getChannel, getChannelContents } from '../../api/arenaClient.js'
-import { GridContainer, GridColumn } from '../../styles'
+import { GridContainer } from '../../styles'
 import { useLoading } from '../../contexts/LoadingContext'
 
 const PageWrapper = styled.div`
   width: 100%;
   min-height: 100vh;
   padding: 20px;
-
-  @media (min-width: 768px) {
-    height: 100vh;
-    overflow: hidden;
-  }
 `
 
-const DesktopGrid = styled(GridContainer)`
-  height: 100%;
-`
-
-const LeftColumn = styled(GridColumn)`
-  @media (min-width: 768px) {
-    grid-column: 1 / 7;
-    height: calc(100vh - 40px);
-    overflow-y: auto;
-    padding-right: 10px;
-
-    &::-webkit-scrollbar {
-      width: 0;
-    }
-    scrollbar-width: none;
-  }
-
-  @media (max-width: 767px) {
-    grid-column: 1 / 13;
-    order: 2;
-  }
-`
-
-const RightColumn = styled(GridColumn)`
-  @media (min-width: 768px) {
-    grid-column: 7 / 13;
-    height: calc(100vh - 40px);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-  }
-
-  @media (max-width: 767px) {
-    grid-column: 1 / 13;
-    order: 1;
-    margin-bottom: 2rem;
-  }
-`
-
-const ImageList = styled.div`
+/* Header: title, meta, description centered */
+const HeaderSection = styled.section`
+  padding-top: 3rem;
+  padding-bottom: 2rem;
+  margin-bottom: 2rem;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  align-items: center;
+  text-align: center;
+
+  @media (min-width: 768px) {
+    padding-top: 5rem;
+    padding-bottom: 3rem;
+    margin-bottom: 3rem;
+  }
+
+  @media (min-width: 1024px) {
+    padding-top: 6rem;
+    padding-bottom: 4rem;
+  }
 `
 
-const ProjectImage = styled.img`
+const HeaderInner = styled.div`
   width: 100%;
-  height: auto;
-  display: block;
+  max-width: 720px;
 `
 
 const ProjectName = styled.h1`
@@ -95,12 +65,16 @@ const ProjectMeta = styled.div`
   font-family: 'PPNeueMontreal', sans-serif;
   font-size: 0.9rem;
   line-height: 1.5;
-  color: #666;
-  margin: 0 0 1.5rem 0;
+  color: #333;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 1rem 1.5rem;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1.5rem;
+`
+
+const MetaItem = styled.span`
+  text-transform: capitalize;
 `
 
 const Description = styled.div`
@@ -108,9 +82,10 @@ const Description = styled.div`
   font-size: 1rem;
   line-height: 1.45;
   color: black;
+  text-align: center;
 
   p {
-    margin: 0 0 1.5rem 0;
+    margin: 0 0 1rem 0;
 
     &:last-child {
       margin-bottom: 0;
@@ -119,8 +94,36 @@ const Description = styled.div`
 
   @media (min-width: 768px) {
     font-size: 1.15rem;
-    margin-top: auto;
   }
+`
+
+/* Images grid – same curated layout as homepage */
+const ImagesGridContainer = styled(GridContainer)`
+  row-gap: 20px;
+`
+
+const ImageColumn = styled.div`
+  grid-column: 1 / -1;
+
+  @media (min-width: 768px) {
+    grid-column: ${(props) => {
+      if (props.$layoutType === 'double-left') return '1 / 7'
+      if (props.$layoutType === 'double-right') return '7 / 13'
+      if (props.$layoutType === 'double-right-first') return '7 / 10'
+      if (props.$layoutType === 'double-right-second') return '10 / 13'
+      if (props.$layoutType === 'double-left-first') return '1 / 4'
+      if (props.$layoutType === 'double-left-second') return '4 / 7'
+      if (props.$layoutType === 'single-left') return '1 / 7'
+      if (props.$layoutType === 'single-right') return '7 / 13'
+      return 'span 12'
+    }};
+  }
+`
+
+const ProjectImage = styled.img`
+  width: 100%;
+  height: auto;
+  display: block;
 `
 
 const StatusMessage = styled.p`
@@ -129,6 +132,17 @@ const StatusMessage = styled.p`
   line-height: 1.45;
   padding: 20px;
 `
+
+/* Same row pattern as ProjectsGrid */
+const curatedLayout = [
+  'single-left',
+  'single-right',
+  'double-right-both',
+  'single-left',
+  'single-right',
+  'single-right',
+  'double-left-both',
+]
 
 const extractImageUrl = (block) =>
   block?.image?.large?.src ||
@@ -195,6 +209,55 @@ const parseBlockTextContent = (block) => {
   if (typeof content === 'string') return content.trim()
   if (block.content_html) return block.content_html.replace(/<[^>]*>/g, '').trim()
   return ''
+}
+
+const buildImageLayoutConfig = (imageBlocks) => {
+  if (!imageBlocks.length) return []
+  const layout = []
+  let index = 0
+  let rowIndex = 0
+  while (index < imageBlocks.length) {
+    const rowType = curatedLayout[rowIndex % curatedLayout.length]
+    if (rowType === 'double-right-both' && index + 1 < imageBlocks.length) {
+      layout.push({
+        type: 'double',
+        items: [
+          { block: imageBlocks[index], layoutType: 'double-right-first' },
+          { block: imageBlocks[index + 1], layoutType: 'double-right-second' },
+        ],
+      })
+      index += 2
+    } else if (rowType === 'double-left-both' && index + 1 < imageBlocks.length) {
+      layout.push({
+        type: 'double',
+        items: [
+          { block: imageBlocks[index], layoutType: 'double-left-first' },
+          { block: imageBlocks[index + 1], layoutType: 'double-left-second' },
+        ],
+      })
+      index += 2
+    } else if (rowType === 'single-left') {
+      layout.push({
+        type: 'single',
+        items: [{ block: imageBlocks[index], layoutType: 'single-left' }],
+      })
+      index += 1
+    } else if (rowType === 'single-right') {
+      layout.push({
+        type: 'single',
+        items: [{ block: imageBlocks[index], layoutType: 'single-right' }],
+      })
+      index += 1
+    } else {
+      layout.push({
+        type: 'single',
+        items: [{ block: imageBlocks[index], layoutType: 'single-left' }],
+      })
+      index += 1
+    }
+    rowIndex += 1
+  }
+  return layout
 }
 
 const ProjectDetail = () => {
@@ -266,33 +329,25 @@ const ProjectDetail = () => {
     ? (channel.title || '').replace(/^Project\s*\/\s*/i, '').trim() || slug
     : ''
 
+  const imageLayoutConfig = useMemo(
+    () => buildImageLayoutConfig(imageBlocks),
+    [imageBlocks]
+  )
+
   if (error) {
     return <StatusMessage>Error loading project: {error.message}</StatusMessage>
   }
 
   return (
     <PageWrapper>
-      <DesktopGrid>
-        <LeftColumn>
-          <ImageList>
-            {imageBlocks.map((block) => (
-              <ProjectImage
-                key={block.id}
-                src={extractImageUrl(block)}
-                alt={block.title || block.generated_title || projectName}
-                loading="lazy"
-              />
-            ))}
-          </ImageList>
-        </LeftColumn>
-
-        <RightColumn>
+      <HeaderSection>
+        <HeaderInner>
           {projectName && <ProjectName>{projectName}</ProjectName>}
           {(year || medium || dimensions) && (
             <ProjectMeta>
-              {year && <span>{year}</span>}
-              {medium && <span>{medium}</span>}
-              {dimensions && <span>{dimensions}</span>}
+              {year && <MetaItem>{year}</MetaItem>}
+              {medium && <MetaItem>{medium}</MetaItem>}
+              {dimensions && <MetaItem>{dimensions}</MetaItem>}
             </ProjectMeta>
           )}
           {descriptionHtml && (
@@ -300,8 +355,27 @@ const ProjectDetail = () => {
               dangerouslySetInnerHTML={{ __html: descriptionHtml }}
             />
           )}
-        </RightColumn>
-      </DesktopGrid>
+        </HeaderInner>
+      </HeaderSection>
+
+      {imageLayoutConfig.length > 0 && (
+        <ImagesGridContainer>
+          {imageLayoutConfig.map((row) =>
+            row.items.map((item) => (
+              <ImageColumn
+                key={item.block.id}
+                $layoutType={item.layoutType}
+              >
+                <ProjectImage
+                  src={extractImageUrl(item.block)}
+                  alt={item.block.title || item.block.generated_title || projectName}
+                  loading="lazy"
+                />
+              </ImageColumn>
+            ))
+          )}
+        </ImagesGridContainer>
+      )}
     </PageWrapper>
   )
 }
