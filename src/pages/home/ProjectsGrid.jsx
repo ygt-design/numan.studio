@@ -20,31 +20,31 @@ const ProjectsGridContainer = styled(GridContainer)`
   row-gap: 20px;
 `
 
-/* Column 1 left empty so fixed tags menu stays visible while scrolling */
-const ResponsiveProjectColumn = styled(GridColumn)`
-  @media (min-width: 768px) {
-    grid-column: ${(props) => {
-      if (props.$layoutType === 'double-left') {
-        return '2 / 8';
-      } else if (props.$layoutType === 'double-right') {
-        return '8 / 13';
-      } else if (props.$layoutType === 'double-right-first') {
-        return '8 / 11';
-      } else if (props.$layoutType === 'double-right-second') {
-        return '11 / 13';
-      } else if (props.$layoutType === 'double-left-first') {
-        return '2 / 5';
-      } else if (props.$layoutType === 'double-left-second') {
-        return '5 / 8';
-      } else if (props.$layoutType === 'single-left') {
-        return '2 / 8';
-      } else if (props.$layoutType === 'single-right') {
-        return '8 / 13';
-      }
-      return 'span 12';
-    }};
+const ProjectColumn = styled(GridColumn)`
+  @media (max-width: 767px) {
+    grid-column: 1 / -1;
   }
 `
+
+const getGridPosition = (index) => {
+  let remaining = index
+  let row = 0
+  while (true) {
+    const rowSize = row % 2 === 0 ? 2 : 3
+    if (remaining < rowSize) {
+      if (rowSize === 2) {
+        return remaining === 0
+          ? { start: 2, end: 7 }
+          : { start: 7, end: 13 }
+      }
+      if (remaining === 0) return { start: 2, end: 6 }
+      if (remaining === 1) return { start: 6, end: 10 }
+      return { start: 10, end: 13 }
+    }
+    remaining -= rowSize
+    row++
+  }
+}
 
 const ProjectCard = styled.div`
   position: relative;
@@ -58,23 +58,6 @@ const ProjectImage = styled.img`
   height: auto;
   display: block;
 `
-
-// Curated layout configuration
-// Each entry defines the layout for a row:
-// - 'double-left-right': 2 items (left: 1-8, right: 5-12)
-// - 'double-right-both': 2 items (both in 5-12, split as 5-9 and 9-13)
-// - 'double-left-both': 2 items (both in 1-9, split as 1-5 and 5-9)
-// - 'single-left': 1 item (columns 1-8)
-// - 'single-right': 1 item (columns 5-12)
-const curatedLayout = [
-  'single-left',        // 1st: 1 big on left
-  'single-right',       // 2nd: 1 big on right
-  'double-right-both',  // 3rd: 2 small on right
-  'single-left',        // 4th: 1 big on left
-  'single-right',       // 5th: 1 big on right
-  'single-right',       // 6th: 1 big on right
-  'double-left-both',   // 7th: 2 small on left
-]
 
 const parseBlockTextContent = (block) => {
   const content = block.content
@@ -98,82 +81,6 @@ const ProjectsGrid = ({ selectedTags = [] }) => {
     const set = new Set(selectedTags)
     return projects.filter((p) => p.tags?.some((t) => set.has(t)))
   }, [projects, selectedTags])
-
-  // Create layout configuration once when filtered projects change
-  const layoutConfig = useMemo(() => {
-    if (filteredProjects.length === 0) return []
-
-    const layout = []
-    let projectIndex = 0
-    let rowIndex = 0
-
-    while (projectIndex < filteredProjects.length) {
-      // Cycle through the curated layout pattern
-      const rowType = curatedLayout[rowIndex % curatedLayout.length]
-
-      if (rowType === 'double-left-right' && projectIndex + 1 < filteredProjects.length) {
-        // Two items: left (1-8) and right (5-12)
-        layout.push({
-          type: 'double',
-          items: [
-            { project: filteredProjects[projectIndex], layoutType: 'double-left' },
-            { project: filteredProjects[projectIndex + 1], layoutType: 'double-right' },
-          ],
-        })
-        projectIndex += 2
-      } else if (rowType === 'double-right-both' && projectIndex + 1 < filteredProjects.length) {
-        // Two items: both in columns 5-12
-        layout.push({
-          type: 'double',
-          items: [
-            { project: filteredProjects[projectIndex], layoutType: 'double-right-first' },
-            { project: filteredProjects[projectIndex + 1], layoutType: 'double-right-second' },
-          ],
-        })
-        projectIndex += 2
-      } else if (rowType === 'double-left-both' && projectIndex + 1 < filteredProjects.length) {
-        // Two items: both in columns 1-9
-        layout.push({
-          type: 'double',
-          items: [
-            { project: filteredProjects[projectIndex], layoutType: 'double-left-first' },
-            { project: filteredProjects[projectIndex + 1], layoutType: 'double-left-second' },
-          ],
-        })
-        projectIndex += 2
-      } else if (rowType === 'single-left') {
-        // Single item: left (1-8)
-        layout.push({
-          type: 'single',
-          items: [
-            { project: filteredProjects[projectIndex], layoutType: 'single-left' },
-          ],
-        })
-        projectIndex += 1
-      } else if (rowType === 'single-right') {
-        // Single item: right (5-12)
-        layout.push({
-          type: 'single',
-          items: [
-            { project: filteredProjects[projectIndex], layoutType: 'single-right' },
-          ],
-        })
-        projectIndex += 1
-      } else {
-        // Fallback: single item on left if layout type is unknown
-        layout.push({
-          type: 'single',
-          items: [
-            { project: filteredProjects[projectIndex], layoutType: 'single-left' },
-          ],
-        })
-        projectIndex += 1
-      }
-      rowIndex += 1
-    }
-
-    return layout
-  }, [filteredProjects])
 
   useEffect(() => {
     const cached = getProjectsCache()
@@ -315,23 +222,20 @@ const ProjectsGrid = ({ selectedTags = [] }) => {
         <p>No projects match the selected tags.</p>
       ) : null}
       <ProjectsGridContainer>
-        {layoutConfig.map((row) =>
-          row.items.map((item) => (
-            <ResponsiveProjectColumn
-              key={item.project.id || item.project.slug}
-              span={12}
-              $layoutType={item.layoutType}
-            >
-              <ProjectCard onClick={() => handleProjectClick(item.project.slug)}>
+        {filteredProjects.map((project, index) => {
+          const { start, end } = getGridPosition(index)
+          return (
+            <ProjectColumn key={project.id || project.slug} start={start} end={end}>
+              <ProjectCard onClick={() => handleProjectClick(project.slug)}>
                 <ProjectImage
-                  src={item.project.coverImage}
-                  alt={item.project.projectName}
+                  src={project.coverImage}
+                  alt={project.projectName}
                   loading="lazy"
                 />
               </ProjectCard>
-            </ResponsiveProjectColumn>
-          ))
-        )}
+            </ProjectColumn>
+          )
+        })}
       </ProjectsGridContainer>
     </ProjectsSection>
   )
