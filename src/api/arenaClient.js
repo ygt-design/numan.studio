@@ -279,7 +279,10 @@ export const createBlock = async (channelId, { value, title } = {}) => {
   return postToArena("blocks", body);
 };
 
-export const updateBlock = async (blockId, { content, title, description } = {}) => {
+export const updateBlock = async (
+  blockId,
+  { content, title, description } = {},
+) => {
   if (!blockId) throw new Error("Block ID is required to update a block.");
 
   const body = {};
