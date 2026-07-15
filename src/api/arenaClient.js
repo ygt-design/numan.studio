@@ -293,53 +293,51 @@ export const updateBlock = async (
   return putToArena(`blocks/${blockId}`, body);
 };
 
-const V2_BASE_URL = "https://api.are.na/v2";
+const ARENA_S3_PUBLIC_BASE = "https://s3.amazonaws.com/arena_images-temp/";
 
-export const getUploadPolicy = async () => {
-  const config = buildRequestConfig();
-  const response = await fetch(`${V2_BASE_URL}/uploads/policy`, config);
+// Request presigned S3 PUT URLs for one or more files via the V3 API.
+// Docs: https://www.are.na/developers/explore/upload/post-presign
+export const getPresignedUploads = async (files) => {
+  const payload = files.map((file) => ({
+    filename: file.name,
+    content_type: file.type || "application/octet-stream",
+  }));
 
-  if (!response.ok) {
-    throw new Error(`Failed to get upload policy (${response.status}).`);
+  const result = await postToArena("uploads/presign", { files: payload });
+
+  if (!result?.files?.length) {
+    throw new Error("Are.na presign response did not include any files.");
   }
 
-  return response.json();
+  return result.files;
 };
 
 export const uploadFileToArena = async (file) => {
-  const policy = await getUploadPolicy();
+  const [presigned] = await getPresignedUploads([file]);
 
-  const uuid = crypto.randomUUID();
-  const key = policy.key
-    .replace(":uuid", uuid)
-    .replace("${filename}", file.name);
+  if (!presigned?.upload_url) {
+    throw new Error("Are.na did not return a presigned upload URL.");
+  }
 
-  const formData = new FormData();
-  formData.append("key", key);
-  formData.append("AWSAccessKeyId", policy.AWSAccessKeyId);
-  formData.append("acl", policy.acl);
-  formData.append("success_action_status", policy.success_action_status);
-  formData.append("policy", policy.policy);
-  formData.append("signature", policy.signature);
-  formData.append("Content-Type", file.type || "application/octet-stream");
-  formData.append("file", file);
+  // The Content-Type header on the PUT must match the validated content_type
+  // returned by the presign endpoint, otherwise S3 rejects the signature.
+  const contentType =
+    presigned.content_type || file.type || "application/octet-stream";
 
-  const s3Response = await fetch(policy.bucket, {
-    method: "POST",
-    body: formData,
+  const s3Response = await fetch(presigned.upload_url, {
+    method: "PUT",
+    headers: {
+      "Content-Type": contentType,
+    },
+    body: file,
   });
 
   if (!s3Response.ok) {
     throw new Error(`S3 upload failed (${s3Response.status}).`);
   }
 
-  const xml = await s3Response.text();
-  const locationMatch = xml.match(/<Location>(.*?)<\/Location>/);
-  if (locationMatch) {
-    return decodeURIComponent(locationMatch[1]);
-  }
-
-  return `${policy.bucket}${key}`;
+  // Blocks are created with the public S3 URL built from the returned key.
+  return `${ARENA_S3_PUBLIC_BASE}${presigned.key}`;
 };
 
 export const getGroupBlocks = async (
