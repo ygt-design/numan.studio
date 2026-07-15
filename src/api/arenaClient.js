@@ -337,7 +337,14 @@ export const uploadFileToArena = async (file) => {
   }
 
   // Blocks are created with the public S3 URL built from the returned key.
-  return `${ARENA_S3_PUBLIC_BASE}${presigned.key}`;
+  // The key can contain spaces/special characters from the original filename,
+  // so each path segment must be encoded to produce a valid URI.
+  const encodedKey = presigned.key
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  return `${ARENA_S3_PUBLIC_BASE}${encodedKey}`;
 };
 
 export const getGroupBlocks = async (
