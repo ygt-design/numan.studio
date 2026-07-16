@@ -4,6 +4,14 @@ import styled from 'styled-components'
 import { getChannel, getChannelContents } from '../../api/arenaClient.js'
 import { GridContainer } from '../../styles'
 import { useLoading } from '../../contexts/LoadingContext'
+import {
+  deriveProjectName,
+  extractImageUrl,
+  extractTextContent,
+  isCoverBlock,
+  isMetaBlock,
+  parseBlockTextContent,
+} from '../../utils/arenaBlocks'
 
 const PageWrapper = styled.div`
   width: 100%;
@@ -144,73 +152,6 @@ const curatedLayout = [
   'double-left-both',
 ]
 
-const extractImageUrl = (block) =>
-  block?.image?.large?.src ||
-  block?.image?.medium?.src ||
-  block?.image?.src ||
-  block?.image?.small?.src ||
-  null
-
-const extractTextContent = (block) => {
-  if (!block) return ''
-
-  const content = block.content
-  const isMarkdownContent =
-    content && typeof content === 'object' && !Array.isArray(content)
-
-  let text = ''
-
-  if (isMarkdownContent) {
-    text = content.html || content.plain || content.markdown || ''
-  } else {
-    text =
-      block.content_html ||
-      (typeof content === 'string' ? content : '') ||
-      block.description ||
-      ''
-  }
-
-  const desc = block.description
-  if (
-    !text &&
-    desc &&
-    typeof desc === 'object' &&
-    !Array.isArray(desc)
-  ) {
-    text = desc.html || desc.plain || desc.markdown || ''
-  }
-
-  if (
-    text &&
-    typeof text === 'string' &&
-    !text.startsWith('<') &&
-    !(isMarkdownContent && content.html)
-  ) {
-    const paragraphs = text
-      .split(/\n\s*\n/)
-      .filter((p) => p.trim())
-      .map((p) => `<p>${p.trim()}</p>`)
-      .join('')
-    text = paragraphs || text.replace(/\n/g, '<br>')
-  }
-
-  return text
-}
-
-const blockTitle = (block) =>
-  (block.title || block.generated_title || '').toLowerCase().trim()
-
-const parseBlockTextContent = (block) => {
-  if (!block) return ''
-  const content = block.content
-  if (content && typeof content === 'object' && !Array.isArray(content)) {
-    return (content.plain || content.markdown || '').trim()
-  }
-  if (typeof content === 'string') return content.trim()
-  if (block.content_html) return block.content_html.replace(/<[^>]*>/g, '').trim()
-  return ''
-}
-
 const buildImageLayoutConfig = (imageBlocks) => {
   if (!imageBlocks.length) return []
   const layout = []
@@ -288,18 +229,18 @@ const ProjectDetail = () => {
 
         setChannel(channelData)
 
-        const descBlock = blocks.find((b) => blockTitle(b) === 'description')
+        const descBlock = blocks.find((b) => isMetaBlock(b, 'description'))
         setDescriptionHtml(extractTextContent(descBlock))
 
-        const yearBlock = blocks.find((b) => blockTitle(b) === 'year')
-        const mediumBlock = blocks.find((b) => blockTitle(b) === 'medium')
-        const dimensionsBlock = blocks.find((b) => blockTitle(b) === 'dimensions')
+        const yearBlock = blocks.find((b) => isMetaBlock(b, 'year'))
+        const mediumBlock = blocks.find((b) => isMetaBlock(b, 'medium'))
+        const dimensionsBlock = blocks.find((b) => isMetaBlock(b, 'dimensions'))
         setYear(parseBlockTextContent(yearBlock))
         setMedium(parseBlockTextContent(mediumBlock))
         setDimensions(parseBlockTextContent(dimensionsBlock))
 
         const withImages = blocks.filter((b) => extractImageUrl(b))
-        const coverIndex = withImages.findIndex((b) => blockTitle(b) === 'cover')
+        const coverIndex = withImages.findIndex((b) => isCoverBlock(b))
 
         if (coverIndex > 0) {
           const [cover] = withImages.splice(coverIndex, 1)
@@ -325,9 +266,7 @@ const ProjectDetail = () => {
     }
   }, [slug, setIsLoading, loadingSource])
 
-  const projectName = channel
-    ? (channel.title || '').replace(/^Project\s*\/\s*/i, '').trim() || slug
-    : ''
+  const projectName = channel ? deriveProjectName(channel) || slug : ''
 
   const imageLayoutConfig = useMemo(
     () => buildImageLayoutConfig(imageBlocks),

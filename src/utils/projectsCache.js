@@ -15,6 +15,14 @@ export const getProjectsCache = () => {
 }
 
 export const setProjectsCache = (projects) => {
+  // Never cache an empty list — that freezes a failed/empty fetch for 5 minutes
+  // and hides newly created projects (and recovers slowly from auth issues).
+  if (!Array.isArray(projects) || projects.length === 0) {
+    projectsCache = null
+    projectsCacheTimestamp = null
+    return
+  }
+
   projectsCache = projects
   projectsCacheTimestamp = Date.now()
 }

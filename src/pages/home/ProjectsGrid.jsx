@@ -5,6 +5,14 @@ import { getChannelContents, getGroupChannels } from '../../api/arenaClient.js'
 import { GridContainer, GridColumn } from '../../styles'
 import { useLoading } from '../../contexts/LoadingContext'
 import { getProjectsCache, setProjectsCache } from '../../utils/projectsCache'
+import {
+  deriveProjectName,
+  extractImageUrl,
+  findCoverBlock,
+  isMetaBlock,
+  isProjectChannel,
+  parseBlockTextContent,
+} from '../../utils/arenaBlocks'
 
 const DEFAULT_GROUP_SLUG =
   import.meta.env.VITE_ARENA_GROUP_SLUG?.trim() ||
@@ -59,16 +67,6 @@ const ProjectImage = styled.img`
   display: block;
 `
 
-const parseBlockTextContent = (block) => {
-  const content = block.content
-  if (content && typeof content === 'object' && !Array.isArray(content)) {
-    return (content.plain || content.markdown || '').trim()
-  }
-  if (typeof content === 'string') return content.trim()
-  if (block.content_html) return block.content_html.replace(/<[^>]*>/g, '').trim()
-  return ''
-}
-
 const ProjectsGrid = ({ selectedTags = [] }) => {
   const [projects, setProjects] = useState(() => getProjectsCache() || [])
   const [error, setError] = useState(null)
@@ -101,10 +99,7 @@ const ProjectsGrid = ({ selectedTags = [] }) => {
           maxPages: 5,
         })
 
-        const projectChannels = channels.filter((channel) => {
-          const title = (channel.title || channel.slug || '').trim()
-          return title.startsWith('Project')
-        })
+        const projectChannels = channels.filter(isProjectChannel)
 
         const projectsWithCovers = await Promise.all(
           projectChannels.map(async (channel) => {
@@ -112,33 +107,11 @@ const ProjectsGrid = ({ selectedTags = [] }) => {
               per: 100,
             })
 
-            const coverBlock = blocks.find(
-              (block) =>
-                (block.title || block.generated_title || '')
-                  .toLowerCase()
-                  .trim() === 'cover'
-            )
+            const coverBlock = findCoverBlock(blocks)
+            const orderBlock = blocks.find((block) => isMetaBlock(block, 'order'))
+            const tagsBlock = blocks.find((block) => isMetaBlock(block, 'tags'))
 
-            const orderBlock = blocks.find(
-              (block) =>
-                (block.title || block.generated_title || '')
-                  .toLowerCase()
-                  .trim() === 'order'
-            )
-
-            const tagsBlock = blocks.find(
-              (block) =>
-                (block.title || block.generated_title || '')
-                  .toLowerCase()
-                  .trim() === 'tags'
-            )
-
-            const imageUrl =
-              coverBlock?.image?.large?.src ||
-              coverBlock?.image?.medium?.src ||
-              coverBlock?.image?.src ||
-              coverBlock?.image?.small?.src ||
-              null
+            const imageUrl = extractImageUrl(coverBlock)
 
             const orderText = orderBlock ? parseBlockTextContent(orderBlock) : ''
             const orderNum = orderText ? parseInt(orderText, 10) : NaN
@@ -149,12 +122,11 @@ const ProjectsGrid = ({ selectedTags = [] }) => {
               : []
 
             const channelTitle = channel.title || channel.slug || ''
-            const projectName = channelTitle.replace(/^Project\s*\/\s*/i, '').trim()
 
             return {
               ...channel,
               coverImage: imageUrl,
-              projectName: projectName || channelTitle,
+              projectName: deriveProjectName(channelTitle),
               order: isNaN(orderNum) ? Infinity : orderNum,
               tags: projectTags,
             }
@@ -211,7 +183,11 @@ const ProjectsGrid = ({ selectedTags = [] }) => {
   if (projects.length === 0) {
     return (
       <ProjectsSection id="projects-grid">
-        <p>No projects found.</p>
+        <p>
+          No projects found. Projects need a cover image (block titled &quot;Cover&quot;,
+          or any image if cover is missing) and a channel title starting with
+          &quot;Project&quot;.
+        </p>
       </ProjectsSection>
     )
   }

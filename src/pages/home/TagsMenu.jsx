@@ -1,6 +1,11 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import styled from 'styled-components'
 import { getChannelContents, getGroupChannels } from '../../api/arenaClient.js'
+import {
+  isMetaBlock,
+  isProjectChannel,
+  parseBlockTextContent,
+} from '../../utils/arenaBlocks'
 
 const DEFAULT_GROUP_SLUG =
   import.meta.env.VITE_ARENA_GROUP_SLUG?.trim() ||
@@ -141,16 +146,6 @@ const ClearButton = styled.button`
   }
 `
 
-const parseBlockTextContent = (block) => {
-  const content = block.content
-  if (content && typeof content === 'object' && !Array.isArray(content)) {
-    return (content.plain || content.markdown || '').trim()
-  }
-  if (typeof content === 'string') return content.trim()
-  if (block.content_html) return block.content_html.replace(/<[^>]*>/g, '').trim()
-  return ''
-}
-
 const scrollToProjectsGrid = () => {
   const el = document.getElementById('projects-grid')
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -207,19 +202,14 @@ const TagsMenu = ({ selectedTags = [], onSelectTags, onHeightChange }) => {
           maxPages: 5,
         })
 
-        const projectChannels = channels.filter((ch) => {
-          const title = (ch.title || ch.slug || '').trim()
-          return title.startsWith('Project')
-        })
+        const projectChannels = channels.filter(isProjectChannel)
 
         const tagSet = new Set()
 
         await Promise.all(
           projectChannels.map(async (channel) => {
             const blocks = await getChannelContents(channel.slug, { per: 100 })
-            const tagsBlock = blocks.find(
-              (b) => (b.title || b.generated_title || '').toLowerCase().trim() === 'tags'
-            )
+            const tagsBlock = blocks.find((b) => isMetaBlock(b, 'tags'))
             if (!tagsBlock) return
             const text = parseBlockTextContent(tagsBlock)
             if (!text) return

@@ -1,7 +1,27 @@
-const accessToken = import.meta.env.VITE_ARENA_ACCESS_TOKEN;
+const accessToken = import.meta.env.VITE_ARENA_ACCESS_TOKEN?.trim();
 
 const API_BASE_URL = "https://api.are.na/v3";
 const CACHE_BUST_PARAM = "_cb";
+
+const assertAccessToken = () => {
+  if (!accessToken) {
+    throw new Error(
+      "Missing VITE_ARENA_ACCESS_TOKEN. Add a valid Are.na personal access token to .env and restart the dev server.",
+    );
+  }
+};
+
+const unwrapEntity = (payload) => {
+  if (!payload || typeof payload !== "object") return payload;
+  if (
+    payload.data &&
+    typeof payload.data === "object" &&
+    !Array.isArray(payload.data)
+  ) {
+    return payload.data;
+  }
+  return payload;
+};
 
 const buildRequestConfig = () => {
   const headers = {
@@ -55,8 +75,28 @@ const fetchFromArena = async (endpoint, params = {}) => {
   const response = await fetch(url.toString(), buildRequestConfig());
 
   if (!response.ok) {
-    const message = `Are.na request to "${endpoint}" failed with status ${response.status}.`;
-    throw new Error(message);
+    let detail = "";
+    try {
+      const err = await response.json();
+      detail =
+        err.details?.message ||
+        (err.errors ? err.errors.map((e) => e.message).join("; ") : "") ||
+        err.title ||
+        err.error ||
+        "";
+    } catch {
+      /* ignore parse failure */
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        `Are.na authentication failed (${response.status}). Check VITE_ARENA_ACCESS_TOKEN. ${detail}`.trim(),
+      );
+    }
+
+    throw new Error(
+      `Are.na request to "${endpoint}" failed with status ${response.status}. ${detail}`.trim(),
+    );
   }
 
   return response.json();
@@ -192,6 +232,8 @@ export const getGroupContents = async (
 };
 
 const postToArena = async (endpoint, body = {}) => {
+  assertAccessToken();
+
   const url = new URL(`${API_BASE_URL}/${endpoint}`);
   const config = buildRequestConfig();
 
@@ -209,12 +251,22 @@ const postToArena = async (endpoint, body = {}) => {
     let detail = "";
     try {
       const err = await response.json();
-      detail = err.errors
-        ? err.errors.map((e) => e.message).join("; ")
-        : err.title || "";
+      detail =
+        err.details?.message ||
+        (err.errors ? err.errors.map((e) => e.message).join("; ") : "") ||
+        err.title ||
+        err.error ||
+        "";
     } catch {
       /* ignore parse failure */
     }
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        `Are.na authentication failed (${response.status}). Check VITE_ARENA_ACCESS_TOKEN. ${detail}`.trim(),
+      );
+    }
+
     throw new Error(
       `Are.na POST to "${endpoint}" failed (${response.status}). ${detail}`.trim(),
     );
@@ -224,6 +276,8 @@ const postToArena = async (endpoint, body = {}) => {
 };
 
 const putToArena = async (endpoint, body = {}) => {
+  assertAccessToken();
+
   const url = new URL(`${API_BASE_URL}/${endpoint}`);
   const config = buildRequestConfig();
 
@@ -241,12 +295,22 @@ const putToArena = async (endpoint, body = {}) => {
     let detail = "";
     try {
       const err = await response.json();
-      detail = err.errors
-        ? err.errors.map((e) => e.message).join("; ")
-        : err.title || "";
+      detail =
+        err.details?.message ||
+        (err.errors ? err.errors.map((e) => e.message).join("; ") : "") ||
+        err.title ||
+        err.error ||
+        "";
     } catch {
       /* ignore parse failure */
     }
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        `Are.na authentication failed (${response.status}). Check VITE_ARENA_ACCESS_TOKEN. ${detail}`.trim(),
+      );
+    }
+
     throw new Error(
       `Are.na PUT to "${endpoint}" failed (${response.status}). ${detail}`.trim(),
     );
@@ -266,17 +330,29 @@ export const createChannel = async (
   const body = { title, visibility };
   if (groupId) body.group_id = groupId;
 
-  return postToArena("channels", body);
+  const payload = await postToArena("channels", body);
+  const channel = unwrapEntity(payload);
+
+  if (!channel?.id) {
+    throw new Error("Are.na did not return a channel id after create.");
+  }
+
+  return channel;
 };
 
 export const createBlock = async (channelId, { value, title } = {}) => {
   if (!channelId) throw new Error("Channel ID is required to create a block.");
   if (!value) throw new Error("Block value is required.");
 
-  const body = { value, channel_ids: [channelId] };
+  // Prefer V3 `channels` form over legacy `channel_ids`.
+  const body = {
+    value,
+    channels: [{ id: channelId }],
+  };
   if (title) body.title = title;
 
-  return postToArena("blocks", body);
+  const payload = await postToArena("blocks", body);
+  return unwrapEntity(payload);
 };
 
 export const updateBlock = async (
@@ -290,7 +366,8 @@ export const updateBlock = async (
   if (title !== undefined) body.title = title;
   if (description !== undefined) body.description = description;
 
-  return putToArena(`blocks/${blockId}`, body);
+  const payload = await putToArena(`blocks/${blockId}`, body);
+  return unwrapEntity(payload);
 };
 
 const ARENA_S3_PUBLIC_BASE = "https://s3.amazonaws.com/arena_images-temp/";
@@ -336,9 +413,6 @@ export const uploadFileToArena = async (file) => {
     throw new Error(`S3 upload failed (${s3Response.status}).`);
   }
 
-  // Blocks are created with the public S3 URL built from the returned key.
-  // The key can contain spaces/special characters from the original filename,
-  // so each path segment must be encoded to produce a valid URI.
   const encodedKey = presigned.key
     .split("/")
     .map((segment) => encodeURIComponent(segment))

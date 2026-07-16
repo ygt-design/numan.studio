@@ -6,6 +6,12 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, s
 import { CSS } from '@dnd-kit/utilities'
 import { getGroupChannels, getChannelContents, createChannel, createBlock, updateBlock, uploadFileToArena } from '../../api/arenaClient.js'
 import { invalidateProjectsCache } from '../../utils/projectsCache'
+import {
+  deriveProjectName,
+  isMetaBlock,
+  isProjectChannel,
+  parseBlockTextContent,
+} from '../../utils/arenaBlocks'
 import { GridContainer, GridColumn } from '../../styles'
 
 const DEFAULT_GROUP_SLUG =
@@ -434,16 +440,6 @@ const OrderMessage = styled.span`
   color: ${(props) => (props.$error ? '#c00' : '#090')};
 `
 
-const parseBlockTextContent = (block) => {
-  const content = block.content
-  if (content && typeof content === 'object' && !Array.isArray(content)) {
-    return (content.plain || content.markdown || '').trim()
-  }
-  if (typeof content === 'string') return content.trim()
-  if (block.content_html) return block.content_html.replace(/<[^>]*>/g, '').trim()
-  return ''
-}
-
 const SortableProjectItem = ({ id, name, position }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
 
@@ -493,6 +489,7 @@ const InputPage = () => {
   const [submitProgress, setSubmitProgress] = useState('')
   const [submitError, setSubmitError] = useState(null)
   const [submitSuccess, setSubmitSuccess] = useState(null)
+  const [channelsError, setChannelsError] = useState(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -504,6 +501,7 @@ const InputPage = () => {
 
     const load = async () => {
       setReorderLoading(true)
+      setChannelsError(null)
 
       try {
         const all = await getGroupChannels(DEFAULT_GROUP_SLUG, {
@@ -513,16 +511,12 @@ const InputPage = () => {
 
         if (ignore) return
 
-        const projects = all.filter((ch) =>
-          (ch.title || ch.slug || '').trim().startsWith('Project'),
-        )
+        const projects = all.filter(isProjectChannel)
 
         const withOrder = await Promise.all(
           projects.map(async (ch) => {
             const blocks = await getChannelContents(ch.slug, { per: 100 })
-            const orderBlock = blocks.find(
-              (b) => (b.title || b.generated_title || '').toLowerCase().trim() === 'order'
-            )
+            const orderBlock = blocks.find((b) => isMetaBlock(b, 'order'))
             const orderText = orderBlock ? parseBlockTextContent(orderBlock) : ''
             const orderNum = orderText ? parseInt(orderText, 10) : NaN
             return {
@@ -545,8 +539,12 @@ const InputPage = () => {
           setReorderItems(withOrder)
           setOrderDirty(false)
         }
-      } catch {
-        /* channel list is informational; silently degrade */
+      } catch (err) {
+        if (!ignore) {
+          setChannels([])
+          setReorderItems([])
+          setChannelsError(err.message || 'Failed to load channels from Are.na.')
+        }
       } finally {
         if (!ignore) {
           setChannelsLoading(false)
@@ -696,16 +694,27 @@ const InputPage = () => {
       return
     }
 
+    if (!coverFile) {
+      setSubmitError('A cover image is required — otherwise the project will not appear on the homepage.')
+      return
+    }
+
     setSubmitting(true)
 
     try {
       setSubmitProgress('Creating channel…')
       const channelTitle = `Project / ${trimmedName}`
       const newChannel = await createChannel(channelTitle, { visibility: 'private' })
+      const channelId = newChannel.id
+      const channelSlug = newChannel.slug
+
+      if (!channelId || !channelSlug) {
+        throw new Error('Channel was created but Are.na did not return an id/slug.')
+      }
 
       if (description.trim()) {
         setSubmitProgress('Adding description…')
-        await createBlock(newChannel.id, {
+        await createBlock(channelId, {
           value: description.trim(),
           title: 'Description',
         })
@@ -713,7 +722,7 @@ const InputPage = () => {
 
       if (tags.trim()) {
         setSubmitProgress('Adding tags…')
-        await createBlock(newChannel.id, {
+        await createBlock(channelId, {
           value: tags.trim(),
           title: 'Tags',
         })
@@ -721,7 +730,7 @@ const InputPage = () => {
 
       if (year.trim()) {
         setSubmitProgress('Adding year…')
-        await createBlock(newChannel.id, {
+        await createBlock(channelId, {
           value: year.trim(),
           title: 'Year',
         })
@@ -729,7 +738,7 @@ const InputPage = () => {
 
       if (medium.trim()) {
         setSubmitProgress('Adding medium…')
-        await createBlock(newChannel.id, {
+        await createBlock(channelId, {
           value: medium.trim(),
           title: 'Medium',
         })
@@ -737,25 +746,32 @@ const InputPage = () => {
 
       if (dimensions.trim()) {
         setSubmitProgress('Adding dimensions…')
-        await createBlock(newChannel.id, {
+        await createBlock(channelId, {
           value: dimensions.trim(),
           title: 'Dimensions',
         })
       }
 
-      if (coverFile) {
-        setSubmitProgress('Uploading cover image…')
-        const coverUrl = await uploadFileToArena(coverFile)
-        await createBlock(newChannel.id, {
-          value: coverUrl,
-          title: 'Cover',
-        })
+      setSubmitProgress('Uploading cover image…')
+      const coverUrl = await uploadFileToArena(coverFile)
+      const coverBlock = await createBlock(channelId, {
+        value: coverUrl,
+        title: 'Cover',
+      })
+
+      // Are.na sometimes keeps the uploaded filename as the title (e.g. Cover.jpg).
+      // Force the canonical title the homepage looks for.
+      if (coverBlock?.id) {
+        const currentTitle = (coverBlock.title || coverBlock.generated_title || '').trim()
+        if (currentTitle.toLowerCase() !== 'cover') {
+          await updateBlock(coverBlock.id, { title: 'Cover' })
+        }
       }
 
       for (let i = 0; i < imageFiles.length; i++) {
         setSubmitProgress(`Uploading image ${i + 1} of ${imageFiles.length}…`)
         const url = await uploadFileToArena(imageFiles[i])
-        await createBlock(newChannel.id, { value: url })
+        await createBlock(channelId, { value: url })
       }
 
       setSubmitProgress('Setting order…')
@@ -763,14 +779,15 @@ const InputPage = () => {
         (max, item) => (item.orderValue !== Infinity ? Math.max(max, item.orderValue) : max),
         0,
       )
-      await createBlock(newChannel.id, { value: String(maxOrder + 1), title: 'Order' })
+      await createBlock(channelId, { value: String(maxOrder + 1), title: 'Order' })
 
       invalidateProjectsCache()
+      setReloadKey((k) => k + 1)
       setSubmitProgress('')
       setSubmitSuccess(`Created "${channelTitle}". Redirecting…`)
 
       setTimeout(() => {
-        navigate(`/project/${newChannel.slug}`)
+        navigate(`/project/${channelSlug}`)
       }, 1200)
     } catch (err) {
       setSubmitError(err.message || 'Something went wrong.')
@@ -779,9 +796,6 @@ const InputPage = () => {
       setSubmitting(false)
     }
   }
-
-  const deriveProjectName = (title) =>
-    (title || '').replace(/^Project\s*\/\s*/i, '').trim() || title
 
   return (
     <PageWrapper>
@@ -800,6 +814,14 @@ const InputPage = () => {
             <HintText>Loading channels…</HintText>
           )}
 
+          {channelsError && (
+            <ErrorMessage>{channelsError}</ErrorMessage>
+          )}
+
+          {!channelsLoading && !channelsError && channels.length === 0 && (
+            <HintText>No project channels found in the group.</HintText>
+          )}
+
           <ChannelList>
             {channels.map((ch) => (
               <ChannelItem
@@ -814,7 +836,7 @@ const InputPage = () => {
                   }
                 }}
               >
-                <ChannelItemName>{deriveProjectName(ch.title || ch.slug)}</ChannelItemName>
+                <ChannelItemName>{deriveProjectName(ch)}</ChannelItemName>
                 <ArenaButton
                   href={`https://www.are.na/${DEFAULT_GROUP_SLUG}/${ch.slug}`}
                   target="_blank"
@@ -849,7 +871,7 @@ const InputPage = () => {
                       <SortableProjectItem
                         key={item.channel.id}
                         id={String(item.channel.id)}
-                        name={deriveProjectName(item.channel.title || item.channel.slug)}
+                        name={deriveProjectName(item.channel)}
                         position={index + 1}
                       />
                     ))}
@@ -953,7 +975,7 @@ const InputPage = () => {
             </FieldRow>
 
             <FieldGroup>
-              <Label>Cover image</Label>
+              <Label>Cover image (required)</Label>
               {coverPreview ? (
                 <PreviewGrid>
                   <PreviewItem>
@@ -982,9 +1004,13 @@ const InputPage = () => {
                     accept="image/*"
                     onChange={handleCoverChange}
                     disabled={submitting}
+                    required
                   />
                 </FileDropZone>
               )}
+              <HintText>
+                Saved as a block titled &quot;Cover&quot; — this is what appears on the homepage.
+              </HintText>
             </FieldGroup>
 
             <FieldGroup>

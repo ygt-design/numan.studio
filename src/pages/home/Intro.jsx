@@ -3,6 +3,7 @@ import styled from 'styled-components'
 import { getChannelContents, getGroupChannels } from '../../api/arenaClient.js'
 import { GridContainer, GridColumn } from '../../styles'
 import { useLoading } from '../../contexts/LoadingContext'
+import { extractTextContent, normalizeBlockTitle } from '../../utils/arenaBlocks'
 
 const DEFAULT_GROUP_SLUG =
   import.meta.env.VITE_ARENA_GROUP_SLUG?.trim() ||
@@ -107,41 +108,11 @@ const Intro = ({ tagsMenuHeight = 0 }) => {
         })
 
         const aboutTextBlock = blocks.find(
-          (block) =>
-            (block.title || block.generated_title || '').trim() === 'About Text'
+          (block) => normalizeBlockTitle(block) === 'about text'
         )
 
         if (aboutTextBlock && !shouldIgnore) {
-          const content = aboutTextBlock.content
-          const isMarkdownContent =
-            content && typeof content === 'object' && !Array.isArray(content)
-
-          let text = ''
-
-          if (isMarkdownContent) {
-            text = content.html || content.plain || content.markdown || ''
-          } else {
-            text =
-              aboutTextBlock.content_html ||
-              (typeof content === 'string' ? content : '') ||
-              aboutTextBlock.description ||
-              ''
-          }
-
-          if (
-            text &&
-            typeof text === 'string' &&
-            !text.startsWith('<') &&
-            !(isMarkdownContent && content.html)
-          ) {
-            const paragraphs = text
-              .split(/\n\s*\n/)
-              .filter((p) => p.trim())
-              .map((p) => `<p>${p.trim()}</p>`)
-              .join('')
-            text = paragraphs || text.replace(/\n/g, '<br>')
-          }
-
+          const text = extractTextContent(aboutTextBlock)
           setAboutText(text)
         }
       } catch (err) {
